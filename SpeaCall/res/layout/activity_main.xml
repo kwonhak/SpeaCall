@@ -41,4 +41,18 @@
         android:layout_centerHorizontal="true"
         android:text="GetContract" />
 
+    <LinearLayout
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:layout_marginTop="200dp"
+        android:orientation="vertical" >
+
+        <ListView
+            android:id="@+id/list"
+            android:layout_width="fill_parent"
+            android:layout_height="275dp" >
+        </ListView>
+
+    </LinearLayout>
+
 </RelativeLayout>

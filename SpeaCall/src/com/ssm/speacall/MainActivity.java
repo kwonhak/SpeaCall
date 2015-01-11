@@ -12,12 +12,18 @@ import java.net.Socket;
 import java.util.ArrayList;
 
 import android.app.Activity;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.ContactsContract;
+import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
@@ -25,9 +31,9 @@ public class MainActivity extends Activity {
 	private Button btnStart = null;
 	private TextView mTextView;
 	private Button btnGetContract = null;
-	
+	Contact contact = new Contact();
 
-	//  Message input/output situation division
+	// Message input/output situation division
 	public static final int MSG_FROM_CLIENT = 1;
 	private static final int MSG_TO_CLIENT = 2;
 
@@ -40,14 +46,23 @@ public class MainActivity extends Activity {
 		// finish();
 
 		SocketHandler handler = new SocketHandler();
-		
-		//get Contact list
-		ArrayList<contact> arContractList = new ArrayList<contact>();
-		
-		
+
+		// get Contact list
+		ArrayList<Contact> arContactList = new ArrayList<Contact>();
+		arContactList = getContactList();
+
+		ArrayList<String> arGeneral = new ArrayList<String>();
+		for(int i=0;i<arContactList.size();i++){
+			//arGeneral.add(arContactList.get(i).name + arContactList.get(i).phonenum);
+			arGeneral.add(arContactList.get(i).phonenum);
+		}	
+		ArrayAdapter<String> Adapter;
+		Adapter = new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,arGeneral);		
+		ListView list = (ListView) findViewById(R.id.list);
+		list.setAdapter(Adapter);
 		
 
-		//  Socket Server start on Background Thread
+		// Socket Server start on Background Thread
 		final SocketServer server = new SocketServer(handler);
 		Thread serverThread = new Thread(server);
 		serverThread.start();
@@ -58,7 +73,7 @@ public class MainActivity extends Activity {
 			@Override
 			public void onClick(View v) {
 				// TODO Auto-generated method stub
-				String mMessage = "�빞�빞�닾�젅";
+				char mMessage = 'd';
 				Message temp_msg = Message.obtain();
 				temp_msg.what = MSG_TO_CLIENT;
 				temp_msg.obj = mMessage;
@@ -66,45 +81,14 @@ public class MainActivity extends Activity {
 
 			}
 		});
+		
+		
+		
+		
 	}
 
-	private ArrayList<contact> getConcactList(){
-	
-		
-	}
-	
-	public class Contact{
-		long photoid;
-		String phonenum;
-		String name;
-		
-		public long getPhotoid(){
-			return photoid;
-		}
-		
-		public void setPhotoid(long photoid){
-			this.photoid=photoid;
-		}
-		
-		public String getPhonenum(){
-			return phonenum;
-		}
-		
-		public void setPhonenum(String phonenum){
-			this.phonenum = phonenum;
-		}
-		
-		public String getName(){
-			return name;
-		}
-		
-		public void setName(String name){
-			this.name = name;
-		}
-		
-	}
-	
-	
+
+
 	// PC�뿉�꽌 蹂대궡�삩 硫붿떆吏�瑜� TextView�뿉 �몴�떆
 	private class SocketHandler extends Handler {
 		@Override
@@ -114,6 +98,7 @@ public class MainActivity extends Activity {
 			case MSG_FROM_CLIENT:
 				String message = (String) msg.obj;
 				mTextView.append("Message : " + message + "\n");
+				Log.d("hak", "from pc  :  "+message);
 				break;
 
 			default:
@@ -126,7 +111,7 @@ public class MainActivity extends Activity {
 	private class SocketServer implements Runnable {
 
 		// Port
-		private static final int SERVER_PORT = 9500;
+		private static final int SERVER_PORT = 5037;
 
 		// Input/output Stream
 		private ServerSocket mSocketServer = null;
@@ -136,17 +121,18 @@ public class MainActivity extends Activity {
 		// message handler
 		Handler mMainHandler;
 
-		//  PC message sending handler
+		// PC message sending handler
 		Handler mMessageHandler = new Handler() {
 			public void handleMessage(Message msg) {
 				switch (msg.what) {
 				case MSG_TO_CLIENT:
 					try {
 						mServerWriter.write(msg.obj + "\n");
+						
 						mServerWriter.flush();
 					} catch (IOException e) {
 						e.printStackTrace();
-						// 
+						//
 					}
 					break;
 
@@ -184,7 +170,6 @@ public class MainActivity extends Activity {
 			}
 
 			try {
-				// PC濡쒕��꽣 �뱾�뼱�삤�뒗 硫붿떆吏� �닔�떊遺�
 				// Receiving message from PC
 				while (true) {
 					String msg = "";
@@ -201,7 +186,7 @@ public class MainActivity extends Activity {
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
-				// 
+				//
 			}
 			try {
 				// Socket End
@@ -209,12 +194,57 @@ public class MainActivity extends Activity {
 				mReaderFromClient.close();
 				mSocketServer.close();
 			} catch (Exception e) {
-				// 
+				//
 			}
 		}
 	}
 
-	//Sound
+	
+
+	private ArrayList<Contact> getContactList() {
+		Uri uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+		String[] projection = new String[] {
+				ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+				ContactsContract.CommonDataKinds.Phone.NUMBER,
+				ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME };
+
+		String[] selectionArgs = null;
+		String sortOrder = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+				+ " COLLATE LOCALIZED ASC";
+
+		// Cursor contactCursor = managedQuery(uri, projection, null,
+		// selectionArgs, sortOrder);
+		Cursor contactCursor = getContentResolver().query(uri, projection,
+				null, selectionArgs, sortOrder);
+		ArrayList<Contact> contactlist = new ArrayList<Contact>();
+		if (contactCursor.moveToFirst()) {
+			do {
+				String phonenumber = contactCursor.getString(1).replaceAll("-",
+						"");
+//				if (phonenumber.length() == 10) {
+//					phonenumber = phonenumber.substring(0, 3) + "-"
+//							+ phonenumber.substring(3, 6) + "-"
+//							+ phonenumber.substring(6);
+//				} else if (phonenumber.length() > 8) {
+//					phonenumber = phonenumber.substring(0, 3) + "-"
+//							+ phonenumber.substring(3, 7) + "-"
+//							+ phonenumber.substring(7);
+//				}
+				Contact acontact = new Contact();
+				acontact.setPhotoid(contactCursor.getLong(0));
+				acontact.setPhonenum(phonenumber);
+				acontact.setName(contactCursor.getString(2));
+				contactlist.add(acontact);
+
+			} while (contactCursor.moveToNext());
+		}
+
+		return contactlist;
+	}
+
+	
+	
+	// Sound
 
 	@Override
 	protected void onPause() {
