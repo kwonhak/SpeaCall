@@ -48,7 +48,7 @@ public class SpeacallService extends Service {
 
 
 
-	int bufferSize = 1920;
+	int bufferSize = 1929;
 	final int SAMPLE_RATE = 48000 ;
 	// not working 88200, 64000, 
 	// working 48000, 44100
@@ -98,7 +98,6 @@ public class SpeacallService extends Service {
 		SocketHandler handler= new SocketHandler();
 
 		// 백그라운드 스레드에서 Socket Server 구동	
-
 		server = new SocketServer(handler);
 		Thread serverThread = new Thread(server);
 		serverThread.start();
@@ -115,8 +114,6 @@ public class SpeacallService extends Service {
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		// TODO Auto-generated method stub
 		Log.d("hak","onStartCommand");
-
-
 		return super.onStartCommand(intent, flags, startId);
 
 	}
@@ -147,7 +144,6 @@ public class SpeacallService extends Service {
 						mServerWriter.flush();
 					} catch (IOException e) {
 						e.printStackTrace();
-
 					}					
 					break;
 
@@ -183,11 +179,6 @@ public class SpeacallService extends Service {
 				auThread = new AudioThread();
 				Thread audioThread = new Thread(auThread);
 				audioThread.start();
-				Log.d("hak", "Start for loop buffer");
-
-
-				//				mReceiveTask = new MessageReceiveTask();
-				//				mReceiveTask.execute();
 
 				Log.d("hak","메시지 수신부");
 				try {
@@ -197,15 +188,17 @@ public class SpeacallService extends Service {
 						//while (checkMessage) {
 						String msg = "";					
 						msg = mReaderFromClient.readLine();
-						if (msg.equals("exit")) {
-							//checkMessage=false;
+						if(msg.substring(0, 9).toString().equals("SPEACALL1"))
+						{
+							Log.d("hak","substring : "+msg.substring(0, 8).toString());
+							for (int bytesRead; ( bytesRead = is.read(buffer, 0,
+									buffer.length)) != -1;) {	
+								at.write(buffer, 9, buffer.length-9);	
+								//is.skip(9);
+							}
+						}
+						else if (msg.equals("exit")) {
 							break;
-						}else if(msg.equals("8")){
-							Message message = Message.obtain(server.mMainHandler, MSG_FROM_CLIENT);
-							message.obj = msg;
-							Log.d("hak","receivedMessage : "+(String)message.obj);
-							mMainHandler.sendMessage(message);	
-							checkMessage = true;
 						}
 						else if(msg!=null&&msg!="") {
 							//							Message message = Message.obtain(server.mMainHandler, MSG_FROM_CLIENT);
@@ -214,12 +207,10 @@ public class SpeacallService extends Service {
 							//server.mMainHandler.sendMessage(message);	
 							//checkMessage = true;
 
-
-
-							for (int bytesRead; (bytesRead = is.read(buffer, 0,
-									buffer.length)) != -1;) {
-								at.write(buffer, 0, buffer.length);					
-							}
+							//							for (int bytesRead; (bytesRead = is.read(buffer, 0,
+							//									buffer.length)) != -1;) {
+							//								at.write(buffer, 0, buffer.length);					
+							//							}
 						}
 					}
 
@@ -228,20 +219,6 @@ public class SpeacallService extends Service {
 					e.printStackTrace();
 
 				}
-
-
-				//				audioSynth = new AudioSynthesisTask();
-				//				audioSynth.execute();
-
-				//				contactTask = new ContactTask();
-				//				contactTask.execute();
-
-
-
-				//				for (int bytesRead; (bytesRead = is.read(buffer, 0,
-				//						buffer.length)) != -1;) {
-				//					at.write(buffer, 0, buffer.length);					
-				//				}
 				Log.d("hak", "end buffer");
 
 
@@ -309,13 +286,6 @@ public class SpeacallService extends Service {
 
 				keepGoing = true;	
 				at.play();
-				//				Log.d("hak", "here is not wkrking?");	
-				//				while(server.is.read(server.buffer, 0,
-				//						server.buffer.length) != -1) {
-				//					at.write(server.buffer, 0, server.buffer.length);					
-				//				}
-				//
-				//				Log.d("hak", "no");	
 
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -419,38 +389,13 @@ public class SpeacallService extends Service {
 				//server.is.read(server.buffer,0,server.buffer.length);
 				keepGoing = true;	
 				at.play();
-				Log.d("hak", "here is not wkrking?");	
-				for (int bytesRead; (bytesRead = server.is.read(server.buffer, 0,
-						server.buffer.length)) != -1;) {
-					at.write(server.buffer, 0, server.buffer.length);					
-				}
-				//				for (int bytesRead; (bytesRead = server.is.read(buffer, 0,
-				//						buffer.length)) != -1;) {
-				//at.write(buffer, 0, buffer.length);					
-				//				}
-				Log.d("hak", "no");	
-
-				/*
-				while(keepGoing){
-
-					try{
-						nByteRead = server.is.read(buffer);
-					}
-					catch(IOException e){
-						Log.e(TAG,"IOException");
-					}
-
-					if(nByteRead >= 0){
-at.write(buffer, 0, buffer.length);	
-
-					}
+//				for (int bytesRead; (bytesRead = server.is.read(server.buffer, 0,
+//						server.buffer.length)) != -1;) {
+//					at.write(server.buffer, 0, server.buffer.length);					
+//				}
 
 
-				}
-				do{
 
-				}while(nByteRead>0);
-				 */
 			} catch (Exception e) {
 				e.printStackTrace();
 				Log.d("hak", "audio task is not working");
@@ -536,14 +481,11 @@ at.write(buffer, 0, buffer.length);
 				acontact.setPhonenum(phonenumber);
 				acontact.setName(contactCursor.getString(2));
 				contactlist.add(acontact);
-				//Log.d("hak","contact list : "+contactCursor.getString(2) + phonenumber);
 			} while (contactCursor.moveToNext());
 		}
 
 		return contactlist;
 	}
-
-
 
 
 	// Get Call Log

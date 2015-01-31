@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
 
 		 this.startService(new Intent(this,SpeacallService.class));
 		 finish();
+		 
 
 	}
 
