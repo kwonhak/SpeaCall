@@ -467,7 +467,6 @@ public class SpeacallService extends Service  {
 			}
 			return null;
 		}
-
 	}
 
 	// Contact
