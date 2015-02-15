@@ -1,9 +1,14 @@
 package com.ssm.speacall;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
@@ -23,6 +28,7 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -70,6 +76,7 @@ public class SpeacallService extends Service  {
 	CallListTask mCallListTask;
 	ServerSocket mSocketServer = null;
 	TelephonyManager mTelephonyManager;
+	public BufferedInputStream bis = null;
 
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -84,10 +91,8 @@ public class SpeacallService extends Service  {
 		// TODO Auto-generated method stub
 		super.onCreate();
 		Log.d("hak", "onCreate");
-
 		mTelephonyManager = (TelephonyManager)this.getSystemService(Context.TELEPHONY_SERVICE);
 		mTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
-
 		// message handler from PC
 		SocketHandler handler = new SocketHandler();
 
@@ -115,9 +120,49 @@ public class SpeacallService extends Service  {
 		return super.onStartCommand(intent, flags, startId);
 	}
 
+
+
+	public void onDestroy() {
+		Log.i("hak","Service Stop onDestroy");
+		Toast toast = Toast.makeText(getApplicationContext(), "Service Stop",
+				Toast.LENGTH_SHORT);
+		toast.show();
+		at.stop();
+		mTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
+		try {
+			Log.d("hak","socket close");
+			mSocketServer.close();
+			mClient.close();
+			bis.close();
+		} catch (IOException e) { ; }
+
+		super.onDestroy();
+		};
+
+	@Override
+	public boolean stopService(Intent name) {
+		// TODO Auto-generated method stub
+		Log.d("hak","StopService");
+		at.stop();
+		return super.stopService(name);
+	}
+
+	BroadcastReceiver receiver = new BroadcastReceiver() {
+		public void onReceive(Context context, Intent intent) {
+			Toast toast = Toast.makeText(getApplicationContext(), "receiver usb Stop",
+					Toast.LENGTH_SHORT);
+			Log.d("hak", " USB stop");
+			if (intent.getAction().equalsIgnoreCase( "android.intent.action.UMS_DISCONNECTED"))
+			{
+				Log.d("hak", " USB unplugged stopping  service");
+				stopSelf();
+			}
+		}
+	};
+
 	PhoneStateListener phoneStateListener = new PhoneStateListener(){
 		public void onCallStateChanged(int state, String incomingNumber){
-
+			String phoneNumber;
 			int minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE,
 					AudioFormat.CHANNEL_CONFIGURATION_STEREO,
 					AudioFormat.ENCODING_PCM_16BIT);
@@ -135,15 +180,30 @@ public class SpeacallService extends Service  {
 				break;
 			case TelephonyManager.CALL_STATE_RINGING:
 				// ringing a call bell
-				Log.i("speacall","STATE_ring");
+				Log.i("speacall","STATE_ring" + incomingNumber);
+				 phoneNumber = String.valueOf(incomingNumber);
+//				try {
+//					//server.mServerWriter.write("SPEACALL8"+phoneNumber+"\n");
+//					server.mServerWriter.flush();
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+				
 				at.stop();
 				break;
 			case TelephonyManager.CALL_STATE_OFFHOOK:
 				// calling
 				Log.i("speacall","STATE_offhook");
+				 phoneNumber = String.valueOf(incomingNumber);
+//				try {
+//					//server.mServerWriter.write("SPEACALL9"+phoneNumber+"\n");
+//					server.mServerWriter.flush();
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
 				at.stop();
-				//mIntentService.stopSelf();
-
 				break;
 			default :
 
@@ -152,36 +212,6 @@ public class SpeacallService extends Service  {
 		};
 	};
 
-	public void onDestroy() {
-		Log.i("hak","Service Stop");
-		super.onDestroy();
-
-				if (mClient != null) {
-					try {
-						mSocketServer.close();
-						mClient.close();
-					} catch (IOException e) { ; }
-				}
-		stopService(new Intent(getApplicationContext(), SpeacallService.class));
-	};
-
-	@Override
-	public boolean stopService(Intent name) {
-		// TODO Auto-generated method stub
-		return super.stopService(name);
-	}
-
-	BroadcastReceiver receiver = new BroadcastReceiver() {
-		public void onReceive(Context context, Intent intent) {
-			if (intent.getAction().equalsIgnoreCase( "android.intent.action.UMS_DISCONNECTED"))
-			{
-				Log.d("hak", " USB unplugged stopping  service");
-				stopService(new Intent(getApplicationContext(), SpeacallService.class));
-			}
-		}
-	};
-
-
 	// 안드로이드용 소켓 서버
 	public class SocketServer implements Runnable {
 
@@ -189,9 +219,10 @@ public class SpeacallService extends Service  {
 		private OutputStream os = null;
 
 		public BufferedWriter mServerWriter = null;
-		//public BufferedReader mReaderFromClient = null;
+		public BufferedReader mReaderFromClient = null;
 
-		public BufferedInputStream bis = null;
+		
+		//public BufferedOutputStream bos = null;
 
 		private byte[] buffer = new byte[bufferSize];
 
@@ -230,6 +261,8 @@ public class SpeacallService extends Service  {
 				mClient = mSocketServer.accept();
 				is = mClient.getInputStream();
 				os = mClient.getOutputStream();
+				mServerWriter = new BufferedWriter(new OutputStreamWriter(os));
+				
 
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
@@ -238,28 +271,25 @@ public class SpeacallService extends Service  {
 
 			// 입 출력용 스트림 연결
 			bis = new BufferedInputStream(is);
+			//bos = new BufferedOutputStream(os);
 
-			//mReaderFromClient = new BufferedReader(new InputStreamReader(is));
-			mServerWriter = new BufferedWriter(new OutputStreamWriter(os));
 			try {
 				while (true) {
 					waitHeader(bis);
 					int type = getType(bis);
 					int payloadLen = getPayloadLength(bis);
-
 					switch (type) {
-
 					case 0:
-						stopService(new Intent(getApplicationContext(), SpeacallService.class));
-						//						try {
-						//							// 소켓 종료
-						//							mServerWriter.close();
-						//							//mReaderFromClient.close();
-						//							mSocketServer.close();
-						//						} catch (Exception e) {
-						//							e.printStackTrace();
-						//						}
-						stopService(new Intent(getApplicationContext(), SpeacallService.class));
+						try {
+							// 소켓 종료
+							mServerWriter.close();
+							//mReaderFromClient.close();
+							mSocketServer.close();
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+						stopSelf();
+						//stopService(new Intent(getApplicationContext(), SpeacallService.class));
 						break;
 						// if audio data
 					case 1:
@@ -276,13 +306,16 @@ public class SpeacallService extends Service  {
 						mCallListTask = new CallListTask();
 						mCallListTask.execute();
 						break;
+					case 4:
+						Log.d("hak", " start and payload len :  "+ payloadLen);
+						getPhone( bis,  payloadLen);
+						break;			
 					default :
 						break;
 					}
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
-
 			}
 			try {
 				// 소켓 종료
@@ -344,7 +377,8 @@ public class SpeacallService extends Service  {
 			int readPayloadLen = 0;
 			while(readPayloadLen < payloadLen) {
 				try {
-					int readLen = bis.read(buffer, 0, (buffer.length < payloadLen) ? buffer.length : payloadLen - readPayloadLen);
+					int readLen = bis.read(buffer, 0
+							, (buffer.length < payloadLen) ? buffer.length : payloadLen - readPayloadLen);
 					readPayloadLen += readLen;
 					at.write(buffer, 0, readLen);
 				} catch (IOException e) {
@@ -352,6 +386,27 @@ public class SpeacallService extends Service  {
 					e.printStackTrace();
 				}
 			}
+		}
+		private void getPhone(BufferedInputStream bis, int payloadLen) {
+			int readPayloadLen = 0;
+			String msg = "";	
+			while(readPayloadLen < payloadLen) {
+				try {
+					int readLen = bis.read(buffer, 0, (buffer.length < payloadLen) ? buffer.length : payloadLen - readPayloadLen);
+					readPayloadLen += readLen;
+					msg = new String(buffer,0,readLen);
+					Log.d("hak", "this is  : "+msg +" & readLen : "+ readLen);
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					Log.d("hak","getphone is non working");
+					e.printStackTrace();
+				}
+			}
+			Log.d("hak", "message from pc : "+msg+"<-");
+			Intent callIntent = new Intent(Intent.ACTION_CALL,Uri.parse("tel:"+msg));
+			callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			startActivity(callIntent);
 		}
 
 		public void endSocket()
@@ -367,8 +422,6 @@ public class SpeacallService extends Service  {
 
 		}
 	}
-
-
 
 	// PC에서 보내온 메시지를 TextView에 표시
 	private class SocketHandler extends Handler {
@@ -386,6 +439,7 @@ public class SpeacallService extends Service  {
 			}
 		}
 	}
+	
 
 	private class AudioThread implements Runnable {
 		public AudioThread() {
@@ -405,7 +459,7 @@ public class SpeacallService extends Service  {
 						AudioFormat.ENCODING_PCM_16BIT, minBufferSize,
 						AudioTrack.MODE_STREAM);
 
-				at.play();
+				//at.play();
 
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -422,44 +476,40 @@ public class SpeacallService extends Service  {
 			try {
 				// get Contact list
 				String mMessage = null;
-
+				int cnt=0;
 				ArrayList<String> arGeneral = new ArrayList<String>();
 				ArrayList<Contact> arContactList = new ArrayList<Contact>();
 				arContactList = getContactList();
-
-//				Message msgSize = Message.obtain();
-//				int intMessage =arContactList.size();
-//
-//				msgSize.what = MSG_TO_CLIENT;
-//				msgSize.obj = "SPEACALL10"+intMessage;
-//				server.mMessageHandler.sendMessage(msgSize);
+				int listsize = arContactList.size();
+				server.mServerWriter.write(listsize+"\n");
+				server.mServerWriter.flush();
+			//	Log.d("hak","speacall size : "+listsize);
 				for (int i = 0; i < arContactList.size(); i++) {
 
-					arGeneral.add(arContactList.get(i).phonenum);
-					if ((arContactList.get(i).phonenum.equals(arContactList.get(i + 1).phonenum) || arContactList.get(i).phonenum.equals(arContactList.get(i + 2).phonenum)) && i <= arContactList.size()-3) {
-						//mMessage = null;
-						continue;
+					try{
+						arGeneral.add(arContactList.get(i).phonenum);
+						if  ((i <= listsize-2) && (arContactList.get(i).phonenum.equals(arContactList.get(i + 1).phonenum) || arContactList.get(i).phonenum.equals(arContactList.get(i + 2).phonenum)) ) {
+							//mMessage = null;
+							//Log.d("hak","speacall cnt : "+String.valueOf(cnt++) + " i : "+i);
+							continue;
+						}
+					}catch (Exception e) {
+						e.printStackTrace();
+						Log.d("hak", "de-duplicate is not working");
 					}
-					Message temp_msg = Message.obtain();
-					mMessage ="SPEACALL"+2+ arContactList.get(i).getName().toString() + "//"
-							+ arContactList.get(i).phonenum.toString();
-					//		+ arContactList.get(i).photoid;
 
-					temp_msg.what = MSG_TO_CLIENT;
-					temp_msg.obj = mMessage;
 
-					//Thread.sleep(100);
-					server.mMessageHandler.sendMessage(temp_msg);
-
-					//Log.d("hak", "contract : " + mMessage);
+					String userName = arContactList.get(i).getName().toString();
+					String userPhone = arContactList.get(i).phonenum.toString();
+					mMessage = userPhone + " "
+							+ userName;
+					server.mServerWriter.write(mMessage+"\n");
+					server.mServerWriter.flush();
 					mMessage = null;
 				}
+				
+				
 
-				Message temp_msg = Message.obtain();
-				temp_msg.what = MSG_TO_CLIENT;
-				temp_msg.obj = "end";
-
-				server.mMessageHandler.sendMessage(temp_msg);
 
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -500,6 +550,10 @@ public class SpeacallService extends Service  {
 		return contactlist;
 	}
 
+
+
+
+
 	// Get Call Log
 
 	private Cursor getCallHistoryCursor(Context context) {
@@ -531,6 +585,9 @@ public class SpeacallService extends Service  {
 								MESSAGE_TYPE_CONVERSATIONS)) {
 					calltype = "부재중";
 				}
+				else{
+					calltype = "문자";
+				}
 
 				if (curCallLog.getString(curCallLog
 						.getColumnIndex(CallLog.Calls.CACHED_NAME)) == null) {
@@ -541,11 +598,12 @@ public class SpeacallService extends Service  {
 				}
 				sb.append(timeToString(curCallLog.getLong(curCallLog
 						.getColumnIndex(CallLog.Calls.DATE))));
-				sb.append("//").append(calltype);
-				sb.append("//").append(callname);
-				sb.append("//").append(
+				sb.append(" ").append(calltype);
+
+				sb.append(" ").append(
 						curCallLog.getString(curCallLog
 								.getColumnIndex(CallLog.Calls.NUMBER)));
+				sb.append(" ").append(callname);
 				curCallLog.moveToNext();
 
 				//String backupData = sb.toString();
@@ -555,13 +613,8 @@ public class SpeacallService extends Service  {
 				temp_msg.what = MSG_TO_CLIENT;
 				temp_msg.obj = sb.toString();
 				server.mMessageHandler.sendMessage(temp_msg);
-				try {
-					Thread.sleep(200);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				Log.d("calllog", sb.toString());
+
+				//Log.d("calllog", sb.toString());
 			}
 		}
 	}
@@ -584,7 +637,7 @@ public class SpeacallService extends Service  {
 
 	private String timeToString(Long time) {
 		SimpleDateFormat simpleFormat = new SimpleDateFormat(
-				"yyyy-MM-dd//HH:mm:ss");
+				"yyyy-MM-dd HH:mm:ss");
 		String date = simpleFormat.format(new Date(time));
 		return date;
 	}
