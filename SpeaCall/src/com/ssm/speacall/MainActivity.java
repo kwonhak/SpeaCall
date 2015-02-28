@@ -12,9 +12,9 @@ public class MainActivity extends Activity {
 		setContentView(R.layout.activity_main);
 		this.startService(new Intent(this,SpeacallService.class));
 		
-		moveTaskToBack(true); 
+//		moveTaskToBack(true); 
 		finish();
-		android.os.Process.killProcess(android.os.Process.myPid());
+		//android.os.Process.killProcess(android.os.Process.myPid());
 	}
 
 	@Override
