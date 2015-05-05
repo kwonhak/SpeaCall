@@ -46,7 +46,7 @@ public class SpeacallService extends Service  {
 	// PORT
 	private static final int SERVER_PORT = 9500;
 
-	int bufferSize = 4000;
+	int bufferSize = 10000;
 	final int SAMPLE_RATE = 48000;
 
 	// Message input/output situation division
@@ -56,7 +56,10 @@ public class SpeacallService extends Service  {
 	public static final String MESSAGE_TYPE_INBOX = "1";
 	public static final String MESSAGE_TYPE_SENT = "2";
 	public static final String MESSAGE_TYPE_CONVERSATIONS = "3";
+	public static final String MESSAGE_TYPE_REJECT_SAMSUNG = "4";
 	public static final String MESSAGE_TYPE_REJECT = "5";
+	public static final String MESSAGE_TYPE_MESSAGE_RECEIVED = "13";
+	public static final String MESSAGE_TYPE_MESSAGE_SEND = "14";
 	final static private String[] Call_Projection = { CallLog.Calls.TYPE,
 		CallLog.Calls.CACHED_NAME, CallLog.Calls.NUMBER,
 		CallLog.Calls.DATE, CallLog.Calls.DURATION };
@@ -66,7 +69,7 @@ public class SpeacallService extends Service  {
 	boolean checkCall = false;
 	boolean checkIdle = false;
 	boolean checkRing = false;
-	boolean checkCallFromPC = false;
+//	boolean checkCallFromPC = false;
 	boolean checkloop = true;
 
 	Contact contact = new Contact();
@@ -81,6 +84,7 @@ public class SpeacallService extends Service  {
 	ServerSocket mSocketServer = null;
 	TelephonyManager mTelephonyManager;
 	BufferedInputStream bis = null;
+	String phoneNumber = "";
 
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -97,6 +101,7 @@ public class SpeacallService extends Service  {
 		
 		IntentFilter filter = new IntentFilter();
 		filter.addAction("android.intent.action.ACTION_POWER_DISCONNECTED");
+		filter.addAction("android.intent.action.NEW_OUTGOING_CALL");
 		getApplicationContext().registerReceiver(receiver, filter);
 
 		mTelephonyManager = (TelephonyManager)this.getSystemService(Context.TELEPHONY_SERVICE);
@@ -123,37 +128,55 @@ public class SpeacallService extends Service  {
 
 	public void onDestroy() {
 		at.stop();
-		mTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
+		//mTelephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
+		Toast toast = Toast.makeText(getApplicationContext(), "SpeaCall Service Stop",
+				Toast.LENGTH_SHORT);
+		toast.show();
 		if(mClient != null){
 			try {
 				//Log.i("hak","Service Stop onDestroy in try");
-				Toast toast = Toast.makeText(getApplicationContext(), "SpeaCall Service Stop",
-						Toast.LENGTH_SHORT);
-				toast.show();
-				mSocketServer.close();
+
 				server.mServerWriter.close();
 				mClient.close();
 				bis.close();
+				
 			} catch (IOException e) { ; }
+		}
+		try {
+			mSocketServer.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 		Log.i("hak","Service Stop onDestroy");
 		super.onDestroy();
 	};
-
+	
 	// If USB Unplugged
 	BroadcastReceiver receiver = new BroadcastReceiver() {
 		public void onReceive(Context context, Intent intent) {
 			if (intent.getAction().equals("android.intent.action.ACTION_POWER_DISCONNECTED")) {
 				checkloop = false;
 				stopSelf();
+
 			}
+
+			if (intent.getAction().equals("android.intent.action.NEW_OUTGOING_CALL")) {
+				phoneNumber = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER);
+				if(mClient != null){
+				SendCallingTask mSendCallTask = new SendCallingTask();
+		        mSendCallTask.execute();
+				}
+		        
+		    }
 		}
 	};
 
 	// Phone State Listener Calling or Ringing or Idle
 	PhoneStateListener phoneStateListener = new PhoneStateListener(){
+		
 		public void onCallStateChanged(int state, String incomingNumber){
-			String phoneNumber;
+			
 			int minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE,
 					AudioFormat.CHANNEL_CONFIGURATION_STEREO,
 					AudioFormat.ENCODING_PCM_16BIT);
@@ -163,10 +186,12 @@ public class SpeacallService extends Service  {
 					AudioFormat.ENCODING_PCM_16BIT, minBufferSize,
 					AudioTrack.MODE_STREAM);
 			String mCaller = "NoName";
+			String caller = "";
+
 			switch(state){
 			case TelephonyManager.CALL_STATE_IDLE:
 				// not calling or ringing
-				//Log.i("speacall","STATE_IDLE");
+//				Log.i("speacall","STATE_IDLE");
 				at.play();
 				if(mClient != null){
 					if(checkIdle){
@@ -181,16 +206,16 @@ public class SpeacallService extends Service  {
 					}
 				}
 				checkRing = true;
-				checkCall = true; 
+				
 				break;
 			case TelephonyManager.CALL_STATE_RINGING:
 				// ringing a call bell
-				//Log.i("speacall","STATE_ring" + incomingNumber);
 				phoneNumber = String.valueOf(incomingNumber);
-
+				Log.i("speacall","STATE_ring" + incomingNumber);
+				
+	
 				Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber));
-				String[] projection = new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME};
-				String caller = "";
+				String[] projection = new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME};	
 
 				Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
 				if (cursor != null) {
@@ -208,7 +233,11 @@ public class SpeacallService extends Service  {
 				if(mClient != null){
 					if(checkRing){
 						try {
-							server.mServerWriter.write("SPEACALL"+6+"00"+String2Byte(mCaller)+mCaller+"\n");
+							
+							if(String2Byte(mCaller)>9)
+								server.mServerWriter.write("SPEACALL"+6+"00"+String2Byte(mCaller)+mCaller+"\n");
+							else
+								server.mServerWriter.write("SPEACALL"+6+"000"+String2Byte(mCaller)+mCaller+"\n");
 							server.mServerWriter.flush();
 						} catch (IOException e) {
 							// TODO Auto-generated catch block
@@ -223,57 +252,42 @@ public class SpeacallService extends Service  {
 				break;
 			case TelephonyManager.CALL_STATE_OFFHOOK:
 				// calling
-				//Log.i("speacall","STATE_offhook");
-				phoneNumber = String.valueOf(incomingNumber);
-				
-				if(mClient != null){
-					if(checkCall){
-						if(checkCallFromPC){
-							Uri urii = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(mPhoneNumber));
-							String[] projectioni = new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME};
-							String calleri = "";
+				Log.i("speacall","STATE_offhook");
+				 uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber));
+				 projection = new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME};	
 
-							Cursor cursori = getContentResolver().query(urii, projectioni, null, null, null);
-							if (cursori != null) {
-								if (cursori.moveToFirst()){
-									calleri = cursori.getString(0);              
-								}        
-								cursori.close();
-							}
-							else
-							{
-								calleri = "NoName";
-							}
-							mCaller = mPhoneNumber +"//"+calleri;
-							try {
-								server.mServerWriter.write("SPEACALL"+7+"00"+String2Byte(mCaller)+mCaller+"\n");
-								server.mServerWriter.flush();
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-						else
-						{
-							try {
-								server.mServerWriter.write("SPEACALL"+7+"00"+String2Byte(mCaller)+mCaller+"\n");
-								server.mServerWriter.flush();
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-						checkCallFromPC = false;
-						checkCall=false;
-						checkIdle=true;
-					}
+				 cursor = getContentResolver().query(uri, projection, null, null, null);
+				if (cursor != null) {
+					if (cursor.moveToFirst()){
+						caller = cursor.getString(0);              
+					}        
+					cursor.close();
 				}
+				else
+				{
+					caller = "NoName";
+				}
+				mCaller = phoneNumber +"//"+caller;
 
+				if(checkCall){
+					try {
+						
+						if(String2Byte(mCaller)>9)
+							server.mServerWriter.write("SPEACALL"+7+"00"+String2Byte(mCaller)+mCaller+"\n");
+						else
+							server.mServerWriter.write("SPEACALL"+7+"000"+String2Byte(mCaller)+mCaller+"\n");
+						server.mServerWriter.flush();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					checkCall=false;
+				}
+				checkIdle=true;
 				at.stop();
 				break;
-			default :
-
-				break;
+				default :
+					break;
 			}
 		};
 	};
@@ -375,7 +389,6 @@ public class SpeacallService extends Service  {
 					case 4:
 						// call number
 						//Log.d("hak", " start and payload len :  "+ payloadLen);
-						checkCallFromPC = true;
 						getPhone( bis,  payloadLen);
 						break;	
 					case 5:
@@ -398,6 +411,11 @@ public class SpeacallService extends Service  {
 						mCallListTaskAgain = new CallListTaskAgain();
 						mCallListTaskAgain.execute();
 						break;
+					case 8:
+						buffer = new byte[bufferSize];
+						//buffer.
+						playSound(bis, payloadLen);
+						break;
 
 					default :
 						break;
@@ -406,14 +424,6 @@ public class SpeacallService extends Service  {
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-			try {
-				// 소켓 종료
-				mServerWriter.close();
-				mSocketServer.close();
-			} catch (Exception e) {
-				;
-			}
-
 		}
 
 		private void waitHeader(BufferedInputStream bis) {
@@ -518,6 +528,56 @@ public class SpeacallService extends Service  {
 			}
 		}
 	}
+	
+
+	private class SendCallingTask extends AsyncTask<Void, Intent, Void> {
+
+		@Override
+		protected Void doInBackground(Void... params) {
+			try {
+				String caller = "";
+				String mCaller = "NoName";
+		        
+				
+				Uri uriCall = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber));
+				String[] projectionCall = new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME};
+				
+				Cursor cursorC = getContentResolver().query(uriCall, projectionCall, null, null, null);
+				if (cursorC != null) {
+					if (cursorC.moveToFirst()){
+						caller = cursorC.getString(0);              
+					}        
+					cursorC.close();
+				}
+				else
+				{
+					caller = "NoName";
+				}
+				mCaller = phoneNumber +"//"+caller;
+
+				try {
+					
+					if(String2Byte(mCaller)>9)
+					{
+						server.mServerWriter.write("SPEACALL"+7+"00"+String2Byte(mCaller)+mCaller+"\n");
+					}	
+					else{
+						server.mServerWriter.write("SPEACALL"+7+"000"+String2Byte(mCaller)+mCaller+"\n");
+					}
+					server.mServerWriter.flush();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+			} catch (Exception e) {
+				e.printStackTrace();
+				Log.d("hak", "contact task is not working");
+			}
+			return null;
+		}
+	}
+	
 
 	private class ContactTask extends AsyncTask<Void, Void, Void> {
 
@@ -636,6 +696,21 @@ public class SpeacallService extends Service  {
 						curCallLog.getColumnIndex(CallLog.Calls.TYPE)).equals(
 								MESSAGE_TYPE_REJECT)) {
 					calltype = "수신거부";
+				}
+				else if (curCallLog.getString(
+						curCallLog.getColumnIndex(CallLog.Calls.TYPE)).equals(
+								MESSAGE_TYPE_REJECT_SAMSUNG)) {
+					calltype = "수신거부";
+				}
+				else if (curCallLog.getString(
+						curCallLog.getColumnIndex(CallLog.Calls.TYPE)).equals(
+								MESSAGE_TYPE_MESSAGE_SEND)) {
+					calltype = "문자";
+				}
+				else if (curCallLog.getString(
+						curCallLog.getColumnIndex(CallLog.Calls.TYPE)).equals(
+							MESSAGE_TYPE_MESSAGE_RECEIVED)) {
+					calltype = "문자";
 				}
 				else{
 					calltype = "문자";
